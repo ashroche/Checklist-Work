@@ -9,14 +9,58 @@
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #f5f4f0; color: #1a1a1a; min-height: 100vh; padding: 24px;
+  background: #f5f4f0; background-attachment: fixed;
+  color: #1a1a1a; min-height: 100vh; padding: 24px;
 }
 
 .topbar {
-  display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;
+  display: flex; align-items: center; justify-content: flex-end; margin-bottom: 16px;
 }
+.topbar-right { display: flex; align-items: center; gap: 8px; position: relative; }
 
-h1 { font-size: 11px; font-weight: 600; color: #aaa; letter-spacing: 0.1em; text-transform: uppercase; }
+.bg-btn {
+  width: 28px; height: 26px; display: flex; align-items: center; justify-content: center;
+  border: 1px solid #e0ddd6; border-radius: 6px; background: #fff; color: #999; cursor: pointer;
+}
+.bg-btn:hover, .bg-btn.open { background: #f5f4f0; color: #555; }
+
+.bg-pop {
+  position: absolute; top: 34px; right: 0; z-index: 50; width: 252px;
+  background: #fff; border: 1px solid #e8e6e0; border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12); padding: 14px; display: none;
+}
+.bg-pop.open { display: block; }
+.bg-label {
+  font-size: 10px; font-weight: 600; color: #aaa; letter-spacing: 0.08em;
+  text-transform: uppercase; margin-bottom: 8px;
+}
+.bg-swatches { display: grid; grid-template-columns: repeat(6, 1fr); gap: 7px; margin-bottom: 14px; }
+.bg-swatch {
+  width: 100%; aspect-ratio: 1; border-radius: 50%; cursor: pointer;
+  border: 1px solid rgba(0,0,0,0.12); padding: 0;
+}
+.bg-swatch:hover { transform: scale(1.08); }
+.bg-swatch.active { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #3B6D11; }
+.bg-seg { display: flex; margin-bottom: 10px; }
+.bg-seg button {
+  flex: 1; font-size: 12px; padding: 5px 0; border: 1px solid #e0ddd6; background: #fff;
+  color: #888; cursor: pointer; font-family: inherit;
+}
+.bg-seg button:first-child { border-radius: 6px 0 0 6px; border-right: none; }
+.bg-seg button:last-child { border-radius: 0 6px 6px 0; }
+.bg-seg button.active { background: #3B6D11; border-color: #3B6D11; color: #fff; }
+.bg-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 12px; color: #888; }
+.bg-row input[type="color"] {
+  width: 40px; height: 28px; border: 1px solid #e0ddd6; border-radius: 6px;
+  padding: 2px; background: #fff; cursor: pointer;
+}
+.bg-row input[type="range"] { flex: 1; accent-color: #3B6D11; }
+.bg-angle-val { width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
+.bg-reset {
+  width: 100%; font-size: 12px; padding: 6px 0; border: 1px solid #e0ddd6; border-radius: 6px;
+  background: #fff; color: #777; cursor: pointer; font-family: inherit; margin-top: 2px;
+}
+.bg-reset:hover { background: #f5f4f0; color: #444; }
 
 .status {
   display: flex; align-items: center; gap: 6px; font-size: 12px; color: #aaa;
@@ -70,7 +114,7 @@ h1 { font-size: 11px; font-weight: 600; color: #aaa; letter-spacing: 0.1em; text
 
 .col-header {
   padding: 13px 16px; font-size: 13px; font-weight: 600; color: #1a1a1a;
-  text-transform: capitalize; border-bottom: 1px solid #e8e6e0; flex-shrink: 0;
+  border-bottom: 1px solid #e8e6e0; flex-shrink: 0;
   cursor: grab; user-select: none; display: flex; align-items: center; gap: 6px;
 }
 .col-header:active { cursor: grabbing; }
@@ -210,10 +254,33 @@ h1 { font-size: 11px; font-weight: 600; color: #aaa; letter-spacing: 0.1em; text
 <body>
 
 <div class="topbar">
-  <h1>Checklist</h1>
-  <div class="status" id="status" onclick="toggleSetup()">
-    <div class="dot" id="dot"></div>
-    <span id="status-text">not connected</span>
+  <div class="topbar-right">
+    <button class="bg-btn" id="bg-btn" title="Background" aria-label="Background">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22a10 10 0 1 1 10-10c0 2.5-2 4-4 4h-2.2a1.8 1.8 0 0 0-1.3 3.1A1.6 1.6 0 0 1 12 22z"/><circle cx="7.5" cy="10.5" r="1.2"/><circle cx="12" cy="7" r="1.2"/><circle cx="16.5" cy="10.5" r="1.2"/></svg>
+    </button>
+    <div class="status" id="status" onclick="toggleSetup()">
+      <div class="dot" id="dot"></div>
+      <span id="status-text">not connected</span>
+    </div>
+    <div class="bg-pop" id="bg-pop">
+      <div class="bg-label">Presets</div>
+      <div class="bg-swatches" id="bg-swatches"></div>
+      <div class="bg-label">Custom</div>
+      <div class="bg-seg">
+        <button id="bg-mode-solid">Solid</button>
+        <button id="bg-mode-gradient">Gradient</button>
+      </div>
+      <div class="bg-row">
+        <input type="color" id="bg-c1" aria-label="Colour 1">
+        <input type="color" id="bg-c2" aria-label="Colour 2">
+      </div>
+      <div class="bg-row" id="bg-angle-row">
+        <span>Angle</span>
+        <input type="range" id="bg-angle" min="0" max="360" step="1">
+        <span class="bg-angle-val" id="bg-angle-val"></span>
+      </div>
+      <button class="bg-reset" id="bg-reset">Reset to default</button>
+    </div>
   </div>
 </div>
 
@@ -252,9 +319,16 @@ let items = {
   buy:     { today: [], bucket: [] }
 };
 let doneState = {};
+let catNames = {};
+let bgState = null;
 let inputVals = {};
 let cfg = { key: "", binId: "" };
 let saveTimer = null, isConnected = false;
+
+// Undo spot for check-then-uncheck (session only, never saved)
+let colVersion = {};
+let lastCheck = {};
+function bump(cat) { colVersion[cat] = (colVersion[cat] || 0) + 1; }
 
 // Drag state - columns
 let dragColIdx = null;
@@ -289,7 +363,7 @@ function loadCfg() {
 }
 
 // ---- JSONBin ----
-function getPayload() { return { cats, items, done: doneState }; }
+function getPayload() { return { cats, items, done: doneState, catNames, bg: bgState }; }
 
 function loadPayload(record) {
   if (record.cats && record.items) {
@@ -307,7 +381,29 @@ function loadPayload(record) {
     items = record;
     doneState = {};
   }
+  catNames = (record.catNames && typeof record.catNames === "object") ? record.catNames : {};
+  if ("bg" in record) { bgState = record.bg || null; storeBgLocal(); applyBg(); }
+  normalise();
 }
+
+function titleCase(s) { return s.replace(/(^|\s)(\S)/g, (m, a, b) => a + b.toUpperCase()); }
+
+// Seed missing display names (matches the old capitalised look) and put
+// unfinished today items above done ones.
+function normalise() {
+  cats.forEach(cat => {
+    if (!items[cat]) items[cat] = { today: [], bucket: [] };
+    if (!catNames[cat]) catNames[cat] = titleCase(cat.replace(/_/g, " "));
+    partition(cat);
+  });
+}
+
+function isDoneItem(cat, item) { return !!doneState[cat + "::" + item]; }
+function partition(cat) {
+  const t = items[cat].today;
+  items[cat].today = t.filter(i => !isDoneItem(cat, i)).concat(t.filter(i => isDoneItem(cat, i)));
+}
+function unfinishedCount(cat) { return items[cat].today.filter(i => !isDoneItem(cat, i)).length; }
 
 async function doConnect() {
   const key = document.getElementById("cfg-key").value.trim();
@@ -390,9 +486,7 @@ function addCategory(name) {
   if (items[id]) { alert("A category with a similar name already exists."); return; }
   cats.push(id);
   items[id] = { today: [], bucket: [] };
-  // Store display name
-  if (!window._catNames) window._catNames = {};
-  window._catNames[id] = key;
+  catNames[id] = key;
   scheduleSave(); render();
 }
 
@@ -400,9 +494,8 @@ function renameCategory(oldId, newName) {
   const trimmed = newName.trim();
   if (!trimmed) return;
   const newId = trimmed.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
-  if (newId === oldId) {
-    if (!window._catNames) window._catNames = {};
-    window._catNames[oldId] = trimmed;
+  if (newId === oldId || !newId) {
+    catNames[oldId] = trimmed;
     scheduleSave(); render(); return;
   }
   if (items[newId] && newId !== oldId) { alert("A category with that name already exists."); render(); return; }
@@ -421,9 +514,9 @@ function renameCategory(oldId, newName) {
     }
   });
   doneState = newDone;
-  if (!window._catNames) window._catNames = {};
-  window._catNames[newId] = trimmed;
-  delete window._catNames[oldId];
+  catNames[newId] = trimmed;
+  delete catNames[oldId];
+  delete lastCheck[oldId];
   scheduleSave(); render();
 }
 
@@ -434,32 +527,33 @@ function deleteCategory(cat) {
     // clean done state
     Object.keys(doneState).forEach(k => { if (k.startsWith(cat + "::")) delete doneState[k]; });
     delete items[cat];
+    delete catNames[cat];
+    delete lastCheck[cat];
     scheduleSave(); render();
   });
 }
 
 function getCatDisplay(id) {
-  if (window._catNames && window._catNames[id]) return window._catNames[id];
-  return id.replace(/_/g, " ");
+  return catNames[id] || titleCase(id.replace(/_/g, " "));
 }
 
 // ---- Item actions ----
 function moveToToday(cat, item) {
   items[cat].bucket = items[cat].bucket.filter(x => x !== item);
-  items[cat].today.push(item);
-  scheduleSave(); render();
+  items[cat].today.splice(unfinishedCount(cat), 0, item);
+  bump(cat); scheduleSave(); render();
 }
 function moveToBucket(cat, item) {
   items[cat].today = items[cat].today.filter(x => x !== item);
   items[cat].bucket.push(item);
   delete doneState[cat + "::" + item];
-  scheduleSave(); render();
+  bump(cat); scheduleSave(); render();
 }
 function deleteItem(cat, sec, item) {
   showConfirm(`Delete <span class="confirm-item">${item.replace(/</g,"&lt;")}</span>?`, () => {
     items[cat][sec] = items[cat][sec].filter(x => x !== item);
     delete doneState[cat + "::" + item];
-    scheduleSave(); render();
+    bump(cat); scheduleSave(); render();
   });
 }
 function addItem(cat) {
@@ -467,7 +561,7 @@ function addItem(cat) {
   if (!v) return;
   items[cat].bucket.push(v);
   inputVals[cat] = "";
-  scheduleSave(); render();
+  bump(cat); scheduleSave(); render();
   requestAnimationFrame(() => {
     const inp = document.querySelector(`[data-add-cat="${cat}"]`);
     if (inp) inp.focus();
@@ -480,31 +574,47 @@ function editItem(cat, sec, oldItem, newItem) {
   const wasDone = doneState[k]; delete doneState[k];
   items[cat][sec][idx] = newItem.trim();
   if (wasDone) doneState[cat + "::" + newItem.trim()] = true;
-  scheduleSave(); render();
+  bump(cat); scheduleSave(); render();
 }
-function toggleDone(cat, item) {
-  const k = cat + "::" + item;
-  const becomingDone = !doneState[k];
-  const arr = items[cat].today;
-  const curIdx = arr.indexOf(item);
-  if (curIdx !== -1) arr.splice(curIdx, 1);
-  if (becomingDone) doneState[k] = true;
-  else delete doneState[k];
-  let doneCount = 0;
-  for (const it of arr) { if (doneState[cat + "::" + it]) doneCount++; }
-  arr.splice(doneCount, 0, item);
+
+// Checking sends an item to the very bottom of today. Unchecking puts it at the
+// bottom of the unfinished items, unless nothing else in the column changed since
+// it was checked, in which case it goes back to the exact spot it came from.
+function checkItem(cat, item, fromSec) {
+  const src = items[cat][fromSec];
+  const idx = src.indexOf(item);
+  if (idx !== -1) src.splice(idx, 1);
+  doneState[cat + "::" + item] = true;
+  items[cat].today.push(item);
+  bump(cat);
+  lastCheck[cat] = { item, sec: fromSec, idx: idx === -1 ? src.length : idx, v: colVersion[cat] };
   scheduleSave(); render();
 }
 
-function completeBucketItem(cat, item) {
-  items[cat].bucket = items[cat].bucket.filter(x => x !== item);
-  doneState[cat + "::" + item] = true;
-  const arr = items[cat].today;
-  let doneCount = 0;
-  for (const it of arr) { if (doneState[cat + "::" + it]) doneCount++; }
-  arr.splice(doneCount, 0, item);
-  scheduleSave(); render();
+function uncheckItem(cat, item) {
+  const lc = lastCheck[cat];
+  const restore = lc && lc.item === item && lc.v === colVersion[cat];
+  const t = items[cat].today;
+  const idx = t.indexOf(item);
+  if (idx !== -1) t.splice(idx, 1);
+  delete doneState[cat + "::" + item];
+  if (restore) {
+    const dest = items[cat][lc.sec];
+    dest.splice(Math.min(lc.idx, dest.length), 0, item);
+  } else {
+    t.splice(unfinishedCount(cat), 0, item);
+  }
+  partition(cat);
+  lastCheck[cat] = null;
+  bump(cat); scheduleSave(); render();
 }
+
+function toggleDone(cat, item) {
+  if (doneState[cat + "::" + item]) uncheckItem(cat, item);
+  else checkItem(cat, item, "today");
+}
+
+function completeBucketItem(cat, item) { checkItem(cat, item, "bucket"); }
 
 // ---- Item drag & drop (pointer-based) ----
 let itemDrag = null;
@@ -518,7 +628,7 @@ function onRowPointerDown(e, cat, sec, rowEl) {
     rowEl, listEl: rowEl.parentElement,
     startX: e.clientX, startY: e.clientY,
     active: false, clone: null, offsetX: 0, offsetY: 0,
-    curIdx: null, lastTarget: -1
+    lastTarget: -1
   };
   window.addEventListener("pointermove", onItemPointerMove);
   window.addEventListener("pointerup", onItemPointerUp);
@@ -578,18 +688,24 @@ function onItemPointerMove(e) {
 
   const list = itemDrag.listEl;
   const others = [...list.querySelectorAll(".item-row")].filter(r => r !== itemDrag.rowEl);
-  let target = others.length;
-  for (let i = 0; i < others.length; i++) {
-    const rect = others[i].getBoundingClientRect();
+  // In today, an item only moves within its own group (unfinished or done)
+  const myDone = itemDrag.rowEl.classList.contains("done-row");
+  const pool = itemDrag.sec === "today"
+    ? others.filter(r => r.classList.contains("done-row") === myDone)
+    : others;
+  let target = pool.length;
+  for (let i = 0; i < pool.length; i++) {
+    const rect = pool[i].getBoundingClientRect();
     if (e.clientY < rect.top + rect.height / 2) { target = i; break; }
   }
   if (target === itemDrag.lastTarget) return;
   itemDrag.lastTarget = target;
-  itemDrag.curIdx = target;
 
   const oldPos = captureListPos(list);
-  if (target >= others.length) list.appendChild(itemDrag.rowEl);
-  else list.insertBefore(itemDrag.rowEl, others[target]);
+  if (target < pool.length) list.insertBefore(itemDrag.rowEl, pool[target]);
+  else if (pool.length) pool[pool.length - 1].after(itemDrag.rowEl);
+  else if (itemDrag.sec === "today" && !myDone) list.insertBefore(itemDrag.rowEl, list.firstChild);
+  else list.appendChild(itemDrag.rowEl);
   animateListPos(list, oldPos);
 }
 
@@ -599,13 +715,11 @@ function onItemPointerUp(e) {
   if (!itemDrag) return;
 
   if (itemDrag.active) {
-    const arr = items[itemDrag.cat][itemDrag.sec];
-    const from = arr.indexOf(itemDrag.item);
-    let to = itemDrag.curIdx != null ? itemDrag.curIdx : from;
-    if (from !== -1) {
-      arr.splice(from, 1);
-      arr.splice(to, 0, itemDrag.item);
-    }
+    const { cat, sec, listEl } = itemDrag;
+    const before = items[cat][sec].join("\u0000");
+    items[cat][sec] = [...listEl.querySelectorAll(".item-row")].map(r => r.getAttribute("data-item"));
+    if (sec === "today") partition(cat);
+    if (items[cat][sec].join("\u0000") !== before) bump(cat);
     const finalRect = itemDrag.rowEl.getBoundingClientRect();
     const clone = itemDrag.clone;
     clone.style.transition = "left 0.16s ease, top 0.16s ease, transform 0.16s ease";
@@ -786,12 +900,8 @@ function renderDOM() {
       const commit = () => {
         hdr.draggable = true;
         const val = inp.value.trim();
-        if (val && val.toLowerCase().replace(/[^a-z0-9]+/g,"_") !== cat) renameCategory(cat, val);
-        else if (val) {
-          if (!window._catNames) window._catNames = {};
-          window._catNames[cat] = val;
-          render();
-        } else render();
+        if (val && val !== getCatDisplay(cat)) renameCategory(cat, val);
+        else render();
       };
       inp.addEventListener("blur", commit);
       inp.addEventListener("keydown", e => {
@@ -863,9 +973,110 @@ function renderDOM() {
   grid.appendChild(addCard);
 }
 
+// ---- Background ----
+const BG_STORE = "checklist-bg-" + APP_ID;
+const BG_DEFAULT = "#f5f4f0";
+const BG_PRESETS = [
+  { type: "solid", c1: "#e8eef5" },
+  { type: "solid", c1: "#e6efe4" },
+  { type: "solid", c1: "#f3ebdd" },
+  { type: "solid", c1: "#f5e8e6" },
+  { type: "solid", c1: "#ece8f4" },
+  { type: "solid", c1: "#d9dee5" },
+  { type: "gradient", c1: "#fde4cf", c2: "#e6e9f5", angle: 135 },
+  { type: "gradient", c1: "#d7e8f5", c2: "#e8f3ee", angle: 135 },
+  { type: "gradient", c1: "#e3f0d8", c2: "#f6f1dc", angle: 135 },
+  { type: "gradient", c1: "#e7def3", c2: "#f9dfe3", angle: 135 },
+  { type: "gradient", c1: "#eceff1", c2: "#d8dee6", angle: 180 },
+  { type: "gradient", c1: "#fbf1cf", c2: "#f6d9c4", angle: 135 }
+];
+let bgCustom = { type: "solid", c1: BG_DEFAULT, c2: "#dfe7f0", angle: 135 };
+
+function bgCss(b) {
+  if (!b) return BG_DEFAULT;
+  if (b.type === "gradient") return `linear-gradient(${b.angle}deg, ${b.c1}, ${b.c2})`;
+  return b.c1;
+}
+function sameBg(a, b) {
+  if (!a || !b || a.type !== b.type || a.c1 !== b.c1) return false;
+  return a.type === "solid" || (a.c2 === b.c2 && +a.angle === +b.angle);
+}
+function applyBg() {
+  document.body.style.background = bgCss(bgState);
+  document.body.style.backgroundAttachment = "fixed";
+}
+function storeBgLocal() {
+  try { localStorage.setItem(BG_STORE, JSON.stringify(bgState)); } catch(e) {}
+}
+function loadBgLocal() {
+  try { const s = localStorage.getItem(BG_STORE); if (s) bgState = JSON.parse(s); } catch(e) {}
+}
+function setBg(b) {
+  bgState = b ? { ...b } : null;
+  applyBg(); storeBgLocal(); scheduleSave(); syncBgPicker();
+}
+
+function syncBgPicker() {
+  if (bgState) bgCustom = { ...bgCustom, ...bgState };
+  const g = bgCustom.type === "gradient";
+  document.getElementById("bg-mode-solid").classList.toggle("active", !g);
+  document.getElementById("bg-mode-gradient").classList.toggle("active", g);
+  document.getElementById("bg-c1").value = bgCustom.c1;
+  document.getElementById("bg-c2").value = bgCustom.c2;
+  document.getElementById("bg-c2").style.display = g ? "" : "none";
+  document.getElementById("bg-angle-row").style.display = g ? "" : "none";
+  document.getElementById("bg-angle").value = bgCustom.angle;
+  document.getElementById("bg-angle-val").textContent = bgCustom.angle + "°";
+  document.querySelectorAll(".bg-swatch").forEach((el, i) => {
+    el.classList.toggle("active", sameBg(bgState, BG_PRESETS[i]));
+  });
+}
+
+function applyCustom() {
+  setBg(bgCustom.type === "gradient"
+    ? { type: "gradient", c1: bgCustom.c1, c2: bgCustom.c2, angle: +bgCustom.angle }
+    : { type: "solid", c1: bgCustom.c1 });
+}
+
+function setupBgPicker() {
+  const btn = document.getElementById("bg-btn"), pop = document.getElementById("bg-pop");
+  const sw = document.getElementById("bg-swatches");
+  BG_PRESETS.forEach(p => {
+    const b = document.createElement("button");
+    b.className = "bg-swatch"; b.style.background = bgCss(p);
+    b.title = p.type === "gradient" ? "Gradient" : "Solid";
+    b.addEventListener("click", () => setBg(p));
+    sw.appendChild(b);
+  });
+  btn.addEventListener("click", e => {
+    e.stopPropagation();
+    const open = !pop.classList.contains("open");
+    pop.classList.toggle("open", open); btn.classList.toggle("open", open);
+    if (open) syncBgPicker();
+  });
+  document.addEventListener("mousedown", e => {
+    if (pop.classList.contains("open") && !pop.contains(e.target) && !btn.contains(e.target)) {
+      pop.classList.remove("open"); btn.classList.remove("open");
+    }
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape") { pop.classList.remove("open"); btn.classList.remove("open"); }
+  });
+  document.getElementById("bg-mode-solid").addEventListener("click", () => { bgCustom.type = "solid"; applyCustom(); });
+  document.getElementById("bg-mode-gradient").addEventListener("click", () => { bgCustom.type = "gradient"; applyCustom(); });
+  document.getElementById("bg-c1").addEventListener("input", e => { bgCustom.c1 = e.target.value; applyCustom(); });
+  document.getElementById("bg-c2").addEventListener("input", e => { bgCustom.c2 = e.target.value; applyCustom(); });
+  document.getElementById("bg-angle").addEventListener("input", e => { bgCustom.angle = +e.target.value; applyCustom(); });
+  document.getElementById("bg-reset").addEventListener("click", () => {
+    bgCustom = { type: "solid", c1: BG_DEFAULT, c2: "#dfe7f0", angle: 135 };
+    setBg(null);
+  });
+}
+
 // ---- Init ----
 async function init() {
   loadCfg();
+  loadBgLocal(); applyBg(); setupBgPicker();
   if (cfg.key && cfg.binId) {
     setStatus("syncing", "loading...");
     try {
@@ -883,6 +1094,7 @@ async function init() {
     document.getElementById("cfg-bin").value = cfg.binId;
     setStatus("", "not connected");
   }
+  normalise();
   render();
 }
 
