@@ -152,7 +152,8 @@ body {
 .item-row:active { cursor: grabbing; }
 .item-row:hover { background: rgba(0,0,0,0.02); }
 .item-row:hover .actions { opacity: 1; }
-.item-row.done-row { background: #EAF3DE; border-radius: 5px; margin: 0 8px; padding: 7px 8px; }
+.item-row.done-row { background: #EAF3DE; border-radius: 6px; margin: 0 8px; padding: 7px 8px; }
+.item-row.done-row + .item-row.done-row { margin-top: 3px; }
 .item-row.flipping { transition: transform 0.2s cubic-bezier(0.2,0,0.2,1); }
 .item-row.drag-source { opacity: 0.32; }
 .item-row.drag-source .item-text { color: #aaa; }
