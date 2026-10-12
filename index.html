@@ -296,6 +296,7 @@ body {
     <input type="text" id="cfg-bin" placeholder="leave empty to create new" autocomplete="off" />
   </div>
   <button class="btn-connect" id="btn-connect" onclick="doConnect()">Connect</button>
+  <div class="setup-hint" id="load-error" style="color:#c0392b;margin-top:10px"></div>
   <div class="setup-hint" style="margin-top:12px">
     Get a free API key at <a href="https://jsonbin.io" target="_blank">jsonbin.io</a> &rarr; API Keys &rarr; Master Key.<br>
     Leave Bin ID empty on first use - it will be created for you.
@@ -423,7 +424,7 @@ async function doConnect() {
     document.getElementById("setup-panel").classList.remove("open");
     render();
   } catch(e) {
-    setStatus("error", "connection failed");
+    setStatus("error", "connection failed: " + failReason(e)); showLoadError(e);
     alert("Could not connect.\n\n" + e.message);
   }
   btn.disabled = false; btn.textContent = "Connect";
@@ -435,13 +436,36 @@ async function createBin() {
     headers: { "Content-Type": "application/json", "X-Master-Key": cfg.key, "X-Bin-Name": "checklist", "X-Bin-Private": "true" },
     body: JSON.stringify(getPayload())
   });
-  if (!res.ok) throw new Error("HTTP " + res.status);
+  if (!res.ok) throw await httpError(res);
   cfg.binId = (await res.json()).metadata.id;
+}
+
+async function httpError(res) {
+  let msg = "";
+  try { msg = (await res.json()).message || ""; } catch(e) {}
+  const err = new Error("HTTP " + res.status + (msg ? ": " + msg : ""));
+  err.status = res.status; err.detail = msg;
+  return err;
+}
+
+// Short, plain reason for the status pill
+function failReason(e) {
+  const m = ((e && e.detail) || (e && e.message) || "").toLowerCase();
+  if (m.includes("exhausted")) return "JSONBin requests used up";
+  if (e && e.status === 401) return "API key rejected";
+  if (e && e.status === 404) return "bin not found";
+  if (e && e.status) return "HTTP " + e.status;
+  if (e instanceof TypeError) return "can't reach JSONBin";
+  return "app error";
+}
+function showLoadError(e) {
+  const el = document.getElementById("load-error");
+  if (el) el.textContent = "Last error: " + ((e && e.message) || String(e));
 }
 
 async function fetchData() {
   const res = await fetch(JSONBIN + "/b/" + cfg.binId + "/latest", { headers: { "X-Master-Key": cfg.key } });
-  if (!res.ok) throw new Error("HTTP " + res.status);
+  if (!res.ok) throw await httpError(res);
   loadPayload((await res.json()).record);
 }
 
@@ -454,9 +478,9 @@ async function pushData() {
       headers: { "Content-Type": "application/json", "X-Master-Key": cfg.key },
       body: JSON.stringify(getPayload())
     });
-    if (!res.ok) throw new Error("HTTP " + res.status);
+    if (!res.ok) throw await httpError(res);
     setStatus("connected", "saved - " + cfg.binId.slice(-6));
-  } catch(e) { setStatus("error", "save failed"); }
+  } catch(e) { setStatus("error", "save failed: " + failReason(e)); showLoadError(e); }
 }
 
 function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(pushData, 800); }
@@ -1084,7 +1108,7 @@ async function init() {
       await fetchData(); isConnected = true;
       setStatus("connected", "connected - " + cfg.binId.slice(-6));
     } catch(e) {
-      setStatus("error", "load failed");
+      setStatus("error", "load failed: " + failReason(e)); showLoadError(e);
       document.getElementById("setup-panel").classList.add("open");
       document.getElementById("cfg-key").value = cfg.key;
       document.getElementById("cfg-bin").value = cfg.binId;
