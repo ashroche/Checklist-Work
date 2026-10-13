@@ -113,14 +113,16 @@ body {
 .col.drag-col-right { box-shadow: 3px 0 0 0 #3B6D11; }
 
 .col-header {
-  padding: 13px 16px; font-size: 13px; font-weight: 600; color: #1a1a1a;
-  border-bottom: 1px solid #e8e6e0; flex-shrink: 0;
+  padding: 13px 16px; font-size: 13px; font-weight: 600; color: #fff;
+  background: #1f3a5f; border-radius: 9px 9px 0 0; flex-shrink: 0;
   cursor: grab; user-select: none; display: flex; align-items: center; gap: 6px;
 }
 .col-header:active { cursor: grabbing; }
 .col-header .col-title { flex: 1; }
 .col-header .col-actions { display: flex; gap: 2px; opacity: 0; transition: opacity 0.12s; }
 .col-header:hover .col-actions { opacity: 1; }
+.col-header .btn-icon { color: rgba(255,255,255,0.65); }
+.col-header .btn-icon:hover { color: #fff; background: rgba(255,255,255,0.15); }
 
 .col-header-edit {
   flex: 1; font-size: 13px; font-weight: 600; font-family: inherit;
@@ -129,9 +131,10 @@ body {
 }
 
 .section { display: flex; flex-direction: column; flex-shrink: 0; }
-.section-today { border-bottom: 1px solid #eceae4; min-height: 48px; padding-bottom: 8px; }
-.section-bucket { background: #faf9f6; border-radius: 0 0 10px 10px; min-height: 60px; flex: 1; }
+.section-today { border-bottom: 1px solid #e2e2e2; min-height: 48px; padding-bottom: 8px; }
+.section-bucket { background: #f4f4f4; border-radius: 0 0 9px 9px; min-height: 60px; flex: 1; }
 
+.section-bucket .section-label { color: #9a9a9a; }
 .section-label {
   padding: 14px 16px 8px; font-size: 10px; font-weight: 600; color: #bbb;
   letter-spacing: 0.08em; text-transform: uppercase; flex-shrink: 0;
