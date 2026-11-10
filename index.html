@@ -142,7 +142,7 @@ body {
 }
 
 .items-list {
-  max-height: 320px; overflow-y: auto;
+  max-height: 320px; overflow-y: auto; position: relative; min-height: 34px;
   scrollbar-width: thin; scrollbar-color: #ddd transparent;
 }
 .items-list::-webkit-scrollbar { width: 4px; }
@@ -150,23 +150,30 @@ body {
 
 .item-row {
   display: flex; align-items: center; padding: 7px 16px; gap: 8px;
-  cursor: grab; user-select: none; transition: background 0.08s;
+  cursor: grab; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  transition: background 0.08s; will-change: transform;
 }
+body.dragging-item, body.dragging-item * { cursor: grabbing !important; user-select: none !important; }
+body.dragging-item .item-row:hover { background: transparent; }
+body.dragging-item .item-row.done-row:hover { background: #EAF3DE; }
+body.dragging-item .item-row:hover .actions { opacity: 0; }
 .item-row:active { cursor: grabbing; }
 .item-row:hover { background: rgba(0,0,0,0.02); }
 .item-row:hover .actions { opacity: 1; }
 .item-row.done-row { background: #EAF3DE; border-radius: 6px; margin: 0 8px; padding: 7px 8px; }
 .item-row.done-row + .item-row.done-row { margin-top: 3px; }
 .item-row.flipping { transition: transform 0.2s cubic-bezier(0.2,0,0.2,1); }
-.item-row.drag-source { opacity: 0.32; }
-.item-row.drag-source .item-text { color: #aaa; }
-.item-row.drag-source .tick-box { opacity: 0.4; }
+.item-row.drag-source {
+  background: rgba(31,58,95,0.06) !important; outline: 1.5px dashed rgba(31,58,95,0.35);
+  outline-offset: -2px; border-radius: 6px;
+}
+.item-row.drag-source > * { visibility: hidden; }
 .drag-clone {
   position: fixed; z-index: 1000; pointer-events: none;
   border-radius: 7px; box-shadow: 0 8px 24px rgba(0,0,0,0.18);
   background: #fff; cursor: grabbing;
-  transform: scale(1.02);
-  padding: 7px 16px;
+  transform: scale(1.03) rotate(-0.6deg);
+  padding: 7px 16px; transition: transform 0.12s ease;
 }
 .drag-clone.done-row { background: #EAF3DE; }
 .drag-clone .actions { display: none; }
@@ -648,122 +655,209 @@ function toggleDone(cat, item) {
 function completeBucketItem(cat, item) { checkItem(cat, item, "bucket"); }
 
 // ---- Item drag & drop (pointer-based) ----
+// Any item can be dragged anywhere: within a list, between today and bucket,
+// and into other columns. Done items keep to the done group of a today list;
+// dropping a done item into a bucket un-completes it.
 let itemDrag = null;
+const LONG_PRESS_MS = 220;
 
 function onRowPointerDown(e, cat, sec, rowEl) {
-  if (e.button !== 0) return;
+  if (e.button !== 0 || itemDrag) return;
   const t = e.target;
   if (t.closest(".actions") || t.closest(".tick-box") || t.tagName === "INPUT") return;
   itemDrag = {
-    cat, sec, item: rowEl.getAttribute("data-item"),
-    rowEl, listEl: rowEl.parentElement,
-    startX: e.clientX, startY: e.clientY,
-    active: false, clone: null, offsetX: 0, offsetY: 0,
-    lastTarget: -1
+    srcCat: cat, srcSec: sec, item: rowEl.getAttribute("data-item"),
+    isDone: rowEl.classList.contains("done-row"),
+    rowEl, srcList: rowEl.parentElement, listEl: rowEl.parentElement,
+    startX: e.clientX, startY: e.clientY, x: e.clientX, y: e.clientY,
+    touch: e.pointerType === "touch", pointerId: e.pointerId,
+    active: false, clone: null, offsetX: 0, offsetY: 0, raf: 0, timer: 0
   };
+  if (itemDrag.touch) {
+    // Touch: hold briefly to pick up, so normal swipes still scroll the page
+    itemDrag.timer = setTimeout(() => { if (itemDrag && !itemDrag.active) startItemDrag(); }, LONG_PRESS_MS);
+  }
   window.addEventListener("pointermove", onItemPointerMove);
   window.addEventListener("pointerup", onItemPointerUp);
+  window.addEventListener("pointercancel", onItemPointerCancel);
+  window.addEventListener("keydown", onItemKeyDown);
 }
 
-function startItemDrag(e) {
-  itemDrag.active = true;
-  const row = itemDrag.rowEl;
+function startItemDrag() {
+  const d = itemDrag;
+  d.active = true;
+  const row = d.rowEl;
   const rect = row.getBoundingClientRect();
-  itemDrag.offsetX = itemDrag.startX - rect.left;
-  itemDrag.offsetY = itemDrag.startY - rect.top;
-
+  d.offsetX = d.startX - rect.left;
+  d.offsetY = d.startY - rect.top;
   const clone = row.cloneNode(true);
-  clone.className = "item-row drag-clone" + (row.classList.contains("done-row") ? " done-row" : "");
+  clone.className = "item-row drag-clone" + (d.isDone ? " done-row" : "");
   clone.style.width = rect.width + "px";
   clone.style.left = rect.left + "px";
   clone.style.top = rect.top + "px";
   document.body.appendChild(clone);
-  itemDrag.clone = clone;
-
+  d.clone = clone;
   row.classList.add("drag-source");
-  document.body.style.userSelect = "none";
+  document.body.classList.add("dragging-item");
+  if (navigator.vibrate && d.touch) { try { navigator.vibrate(10); } catch(e) {} }
+  d.raf = requestAnimationFrame(dragFrame);
 }
 
-function captureListPos(list) {
-  const map = new Map();
-  list.querySelectorAll(".item-row").forEach(el => {
-    map.set(el, el.getBoundingClientRect());
-  });
-  return map;
+// Layout position (ignores in-flight animation transforms) so targets never jitter
+function layoutMid(row, list) {
+  const lr = list.getBoundingClientRect();
+  return lr.top - list.scrollTop + row.offsetTop + row.offsetHeight / 2;
 }
 
-function animateListPos(list, oldPos) {
-  list.querySelectorAll(".item-row").forEach(el => {
-    const oldRect = oldPos.get(el);
-    if (!oldRect) return;
-    const newRect = el.getBoundingClientRect();
-    const dy = oldRect.top - newRect.top;
-    if (Math.abs(dy) < 1) return;
-    el.classList.remove("flipping");
-    el.style.transform = `translateY(${dy}px)`;
-    requestAnimationFrame(() => {
-      el.classList.add("flipping");
-      el.style.transform = "";
-    });
+function listUnderPointer(x, y) {
+  for (const sec of document.querySelectorAll(".section")) {
+    const r = sec.getBoundingClientRect();
+    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return sec.querySelector(".items-list");
+  }
+  return null;
+}
+
+function setPlaceholderLook(sec) {
+  const d = itemDrag, row = d.rowEl, text = row.querySelector(".item-text");
+  const showDone = sec === "today" && d.isDone;
+  row.classList.toggle("done-row", showDone);
+  if (text) { text.classList.toggle("done", showDone); text.classList.toggle("muted", sec === "bucket"); }
+}
+
+function moveFlip(lists, mutate) {
+  const rows = [];
+  lists.forEach(l => l.querySelectorAll(".item-row").forEach(r => { if (r !== itemDrag.rowEl) rows.push(r); }));
+  const before = new Map(rows.map(r => [r, r.getBoundingClientRect().top]));
+  mutate();
+  rows.forEach(r => { r.style.transition = "none"; r.style.transform = ""; });
+  rows.forEach(r => {
+    const dy = before.get(r) - r.getBoundingClientRect().top;
+    if (Math.abs(dy) < 0.5) return;
+    r.style.transform = `translateY(${dy}px)`;
   });
+  void document.body.offsetHeight;
+  rows.forEach(r => {
+    if (!r.style.transform) { r.style.transition = ""; return; }
+    r.style.transition = "transform 0.18s cubic-bezier(0.2,0,0.2,1)";
+    r.style.transform = "";
+  });
+}
+
+function updateDropTarget() {
+  const d = itemDrag;
+  const list = listUnderPointer(d.x, d.y) || d.listEl; // outside any list: stay put
+  const sec = list.dataset.sec;
+  const others = [...list.querySelectorAll(".item-row")].filter(r => r !== d.rowEl);
+  const pool = sec === "today"
+    ? others.filter(r => r.classList.contains("done-row") === d.isDone)
+    : others;
+  const cy = d.y - d.offsetY + d.rowEl.offsetHeight / 2; // centre of the floating item
+  let idx = pool.length;
+  for (let i = 0; i < pool.length; i++) {
+    if (cy < layoutMid(pool[i], list)) { idx = i; break; }
+  }
+  // Where the placeholder should sit
+  let ref = null, after = null;
+  if (idx < pool.length) ref = pool[idx];
+  else if (pool.length) after = pool[pool.length - 1];
+  else if (sec === "today" && !d.isDone) ref = others.find(r => r.classList.contains("done-row")) || null;
+  // Already there?
+  const row = d.rowEl;
+  if (row.parentElement === list) {
+    if (ref && row.nextElementSibling === ref) return;
+    if (after && row.previousElementSibling === after) return;
+    if (!ref && !after && (sec === "today" && !d.isDone ? !row.nextElementSibling || row.nextElementSibling.classList.contains("done-row") : !row.nextElementSibling)) return;
+  }
+  const lists = row.parentElement === list ? [list] : [row.parentElement, list];
+  moveFlip(lists, () => {
+    if (ref) list.insertBefore(row, ref);
+    else if (after) after.after(row);
+    else list.appendChild(row);
+    if (d.listEl !== list) { d.listEl = list; setPlaceholderLook(sec); }
+  });
+}
+
+function autoScroll() {
+  const d = itemDrag, edge = 40, max = 14;
+  const l = d.listEl, r = l.getBoundingClientRect();
+  if (l.scrollHeight > l.clientHeight && d.x >= r.left && d.x <= r.right) {
+    if (d.y < r.top + edge && d.y > r.top - edge) l.scrollTop -= Math.ceil(max * (1 - (d.y - (r.top - edge)) / (2 * edge)));
+    else if (d.y > r.bottom - edge && d.y < r.bottom + edge) l.scrollTop += Math.ceil(max * (1 - ((r.bottom + edge) - d.y) / (2 * edge)));
+  }
+  const vh = window.innerHeight;
+  if (d.y < edge) window.scrollBy(0, -Math.ceil(max * (1 - d.y / edge)));
+  else if (d.y > vh - edge) window.scrollBy(0, Math.ceil(max * (1 - (vh - d.y) / edge)));
+}
+
+function dragFrame() {
+  const d = itemDrag;
+  if (!d || !d.active) return;
+  d.clone.style.left = (d.x - d.offsetX) + "px";
+  d.clone.style.top = (d.y - d.offsetY) + "px";
+  autoScroll();
+  updateDropTarget();
+  d.raf = requestAnimationFrame(dragFrame);
 }
 
 function onItemPointerMove(e) {
-  if (!itemDrag) return;
-  if (!itemDrag.active) {
-    if (Math.hypot(e.clientX - itemDrag.startX, e.clientY - itemDrag.startY) < 5) return;
-    startItemDrag(e);
+  const d = itemDrag;
+  if (!d || e.pointerId !== d.pointerId) return;
+  d.x = e.clientX; d.y = e.clientY;
+  if (!d.active) {
+    const moved = Math.hypot(e.clientX - d.startX, e.clientY - d.startY);
+    if (d.touch) { if (moved > 8) endItemDrag(false); return; } // a swipe, not a hold
+    if (moved < 4) return;
+    startItemDrag();
   }
-  itemDrag.clone.style.left = (e.clientX - itemDrag.offsetX) + "px";
-  itemDrag.clone.style.top = (e.clientY - itemDrag.offsetY) + "px";
-
-  const list = itemDrag.listEl;
-  const others = [...list.querySelectorAll(".item-row")].filter(r => r !== itemDrag.rowEl);
-  // In today, an item only moves within its own group (unfinished or done)
-  const myDone = itemDrag.rowEl.classList.contains("done-row");
-  const pool = itemDrag.sec === "today"
-    ? others.filter(r => r.classList.contains("done-row") === myDone)
-    : others;
-  let target = pool.length;
-  for (let i = 0; i < pool.length; i++) {
-    const rect = pool[i].getBoundingClientRect();
-    if (e.clientY < rect.top + rect.height / 2) { target = i; break; }
-  }
-  if (target === itemDrag.lastTarget) return;
-  itemDrag.lastTarget = target;
-
-  const oldPos = captureListPos(list);
-  if (target < pool.length) list.insertBefore(itemDrag.rowEl, pool[target]);
-  else if (pool.length) pool[pool.length - 1].after(itemDrag.rowEl);
-  else if (itemDrag.sec === "today" && !myDone) list.insertBefore(itemDrag.rowEl, list.firstChild);
-  else list.appendChild(itemDrag.rowEl);
-  animateListPos(list, oldPos);
 }
 
-function onItemPointerUp(e) {
+// Stop the page scrolling under a finger while an item is being dragged
+document.addEventListener("touchmove", e => { if (itemDrag && itemDrag.active) e.preventDefault(); }, { passive: false });
+
+function onItemPointerUp(e) { if (itemDrag && e.pointerId === itemDrag.pointerId) endItemDrag(true); }
+function onItemPointerCancel(e) { if (itemDrag && e.pointerId === itemDrag.pointerId) endItemDrag(false); }
+function onItemKeyDown(e) { if (e.key === "Escape" && itemDrag) endItemDrag(false); }
+
+function endItemDrag(commit) {
+  const d = itemDrag;
   window.removeEventListener("pointermove", onItemPointerMove);
   window.removeEventListener("pointerup", onItemPointerUp);
-  if (!itemDrag) return;
+  window.removeEventListener("pointercancel", onItemPointerCancel);
+  window.removeEventListener("keydown", onItemKeyDown);
+  clearTimeout(d.timer);
+  cancelAnimationFrame(d.raf);
+  itemDrag = null;
+  document.body.classList.remove("dragging-item");
+  if (!d.active) return;
 
-  if (itemDrag.active) {
-    const { cat, sec, listEl } = itemDrag;
-    const before = items[cat][sec].join("\u0000");
-    items[cat][sec] = [...listEl.querySelectorAll(".item-row")].map(r => r.getAttribute("data-item"));
-    if (sec === "today") partition(cat);
-    if (items[cat][sec].join("\u0000") !== before) bump(cat);
-    const finalRect = itemDrag.rowEl.getBoundingClientRect();
-    const clone = itemDrag.clone;
-    clone.style.transition = "left 0.16s ease, top 0.16s ease, transform 0.16s ease";
+  const clone = d.clone;
+  const finalRect = d.rowEl.getBoundingClientRect();
+  if (commit) {
+    const tCat = d.listEl.dataset.cat, tSec = d.listEl.dataset.sec;
+    const orderOf = l => [...l.querySelectorAll(".item-row")].map(r => r.getAttribute("data-item"));
+    const touched = new Set([d.srcCat, tCat]);
+    const before = [...touched].map(c => JSON.stringify(items[c])).join("|");
+    // Completion state follows the item; a bucket never holds done items
+    const wasDone = !!doneState[d.srcCat + "::" + d.item];
+    if (d.srcCat !== tCat || tSec === "bucket") {
+      delete doneState[d.srcCat + "::" + d.item];
+      if (wasDone && tSec === "today") doneState[tCat + "::" + d.item] = true;
+    }
+    items[tCat][tSec] = orderOf(d.listEl);
+    if (d.srcList !== d.listEl) items[d.srcCat][d.srcSec] = orderOf(d.srcList);
+    touched.forEach(c => partition(c));
+    if ([...touched].map(c => JSON.stringify(items[c])).join("|") !== before) { touched.forEach(c => bump(c)); scheduleSave(); }
+    clone.style.transition = "left 0.15s ease, top 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease";
     clone.style.left = finalRect.left + "px";
     clone.style.top = finalRect.top + "px";
     clone.style.transform = "scale(1)";
-    setTimeout(() => { if (clone.parentElement) clone.remove(); }, 180);
-    document.body.style.userSelect = "";
-    scheduleSave(); render();
+    clone.style.boxShadow = "none";
+    setTimeout(() => { clone.remove(); render(); }, 150);
   } else {
-    document.body.style.userSelect = "";
+    // Cancelled: glide back and restore from data
+    clone.remove();
+    render();
   }
-  itemDrag = null;
 }
 
 // ---- Column drag & drop ----
@@ -958,6 +1052,7 @@ function renderDOM() {
       section.appendChild(lbl);
 
       const list = document.createElement("div"); list.className = "items-list";
+      list.dataset.cat = cat; list.dataset.sec = sec;
       const arr = items[cat][sec];
       arr.forEach((item, idx) => list.appendChild(makeItemRow(cat, sec, item, idx)));
       section.appendChild(list);
