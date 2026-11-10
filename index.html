@@ -224,26 +224,6 @@ body.dragging-item .item-row:hover .actions { opacity: 0; }
   padding: 1px 6px; outline: none; line-height: 1.4;
 }
 
-.confirm-delete {
-  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.3); display: flex;
-  align-items: center; justify-content: center; z-index: 100;
-}
-.confirm-box {
-  background: #fff; border-radius: 10px; padding: 20px 24px;
-  max-width: 340px; width: 90%; box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-}
-.confirm-box p { font-size: 13.5px; color: #1a1a1a; margin-bottom: 16px; line-height: 1.5; }
-.confirm-box .confirm-item { font-weight: 600; }
-.confirm-btns { display: flex; gap: 8px; justify-content: flex-end; }
-.confirm-btns button {
-  font-size: 12px; padding: 6px 14px; border-radius: 6px;
-  cursor: pointer; font-family: inherit; border: 1px solid #e0ddd6;
-}
-.btn-cancel { background: #fff; color: #555; }
-.btn-cancel:hover { background: #f5f4f0; }
-.btn-delete { background: #c0392b; color: #fff; border-color: #c0392b; }
-.btn-delete:hover { background: #a93226; }
 
 .add-col-card {
   background: #fff; border-radius: 10px; border: 2px dashed #ddd;
@@ -499,22 +479,6 @@ async function pushData() {
 function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(pushData, 800); }
 
 // ---- Confirm ----
-function showConfirm(msg, onYes) {
-  const root = document.getElementById("modal-root");
-  root.innerHTML = `<div class="confirm-delete" id="confirm-overlay">
-    <div class="confirm-box">
-      <p>${msg}</p>
-      <div class="confirm-btns">
-        <button class="btn-cancel" id="confirm-no">Cancel</button>
-        <button class="btn-delete" id="confirm-yes">Delete</button>
-      </div>
-    </div></div>`;
-  document.getElementById("confirm-no").onclick = () => root.innerHTML = "";
-  document.getElementById("confirm-yes").onclick = () => { root.innerHTML = ""; onYes(); };
-  document.getElementById("confirm-overlay").onclick = e => {
-    if (e.target.id === "confirm-overlay") root.innerHTML = "";
-  };
-}
 
 // ---- Category management ----
 function addCategory(name) {
@@ -558,17 +522,21 @@ function renameCategory(oldId, newName) {
   scheduleSave(); render();
 }
 
+// ---- Delete with Ctrl+Z / Cmd+Z undo (no confirmation) ----
+const undoStack = [];
+function pushUndo(entry) { undoStack.push(entry); if (undoStack.length > 50) undoStack.shift(); }
+
 function deleteCategory(cat) {
-  const displayName = getCatDisplay(cat);
-  showConfirm(`Delete <span class="confirm-item">${displayName.replace(/</g,"&lt;")}</span> and all its items?`, () => {
-    cats = cats.filter(c => c !== cat);
-    // clean done state
-    Object.keys(doneState).forEach(k => { if (k.startsWith(cat + "::")) delete doneState[k]; });
-    delete items[cat];
-    delete catNames[cat];
-    delete lastCheck[cat];
-    scheduleSave(); render();
-  });
+  const idx = cats.indexOf(cat);
+  if (idx === -1) return;
+  const done = {};
+  Object.keys(doneState).forEach(k => { if (k.startsWith(cat + "::")) { done[k] = doneState[k]; delete doneState[k]; } });
+  pushUndo({ type: "cat", cat, idx, data: items[cat], name: catNames[cat], done });
+  cats.splice(idx, 1);
+  delete items[cat];
+  delete catNames[cat];
+  delete lastCheck[cat];
+  scheduleSave(); render();
 }
 
 function getCatDisplay(id) {
@@ -588,12 +556,42 @@ function moveToBucket(cat, item) {
   bump(cat); scheduleSave(); render();
 }
 function deleteItem(cat, sec, item) {
-  showConfirm(`Delete <span class="confirm-item">${item.replace(/</g,"&lt;")}</span>?`, () => {
-    items[cat][sec] = items[cat][sec].filter(x => x !== item);
-    delete doneState[cat + "::" + item];
-    bump(cat); scheduleSave(); render();
-  });
+  const arr = items[cat][sec], idx = arr.indexOf(item);
+  if (idx === -1) return;
+  const k = cat + "::" + item;
+  pushUndo({ type: "item", cat, sec, item, idx, wasDone: !!doneState[k] });
+  arr.splice(idx, 1);
+  if (!arr.includes(item) && !(sec === "today" ? items[cat].bucket : items[cat].today).includes(item)) delete doneState[k];
+  bump(cat); scheduleSave(); render();
 }
+
+function undoDelete() {
+  const u = undoStack.pop();
+  if (!u) return false;
+  if (u.type === "cat") {
+    if (items[u.cat]) return undoDelete(); // a category with that name exists again; skip
+    cats.splice(Math.min(u.idx, cats.length), 0, u.cat);
+    items[u.cat] = u.data;
+    if (u.name) catNames[u.cat] = u.name;
+    Object.assign(doneState, u.done);
+  } else {
+    if (!items[u.cat]) return undoDelete(); // its category was deleted since; skip
+    const arr = items[u.cat][u.sec];
+    arr.splice(Math.min(u.idx, arr.length), 0, u.item);
+    if (u.wasDone) doneState[u.cat + "::" + u.item] = true;
+    partition(u.cat);
+    bump(u.cat);
+  }
+  scheduleSave(); render();
+  return true;
+}
+
+document.addEventListener("keydown", e => {
+  if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== "z") return;
+  const t = e.target;
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return; // normal text undo
+  if (undoDelete()) e.preventDefault();
+});
 function addItem(cat) {
   const v = (inputVals[cat] || "").trim();
   if (!v) return;
